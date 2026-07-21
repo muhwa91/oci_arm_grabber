@@ -18,6 +18,7 @@ import oci
 INTERVAL = 60          # 초 (재고 대기 재시도 간격)
 BACKOFF_429 = 120      # 429 발생 라운드는 더 쉼
 MAX_MINUTES = 340      # 이 시간 넘으면 종료(다음 예약 실행이 이어받음; Actions 6h 한도 회피)
+PROGRESS_EVERY_MIN = 30  # 재고 대기 중 진행 알림 주기(분)
 DISPLAY = "claude_bridge"
 OCPUS = 1
 MEM_GB = 6
@@ -137,9 +138,18 @@ def main():
 
     print(f"start grab loop — {SHAPE} {OCPUS}c/{MEM_GB}GB, {INTERVAL}s")
     start = time.monotonic()
+    last_progress = start  # 첫 진행 알림은 시작 30분 후(cron 체인마다 스팸 방지)
     attempt = 0
     while (time.monotonic() - start) < MAX_MINUTES * 60:
         attempt += 1
+        # 30분마다 대기 진행 상황 1회 알림(컴퓨터 꺼져 있어도 러너가 직접 발신)
+        if (time.monotonic() - last_progress) >= PROGRESS_EVERY_MIN * 60:
+            last_progress = time.monotonic()
+            mins = int((last_progress - start) // 60)
+            notify(
+                f"⏳ 오라클 재고 대기 중 — 이번 실행 {attempt}회 시도 · "
+                f"{mins // 60}시간 {mins % 60}분째 (누적은 '오라클' 명령으로 확인)"
+            )
         try:
             new = cc.launch_instance(details).data
             ip = public_ip_of(cc, net, compartment, new.id)
