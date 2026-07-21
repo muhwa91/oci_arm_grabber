@@ -18,7 +18,7 @@ import oci
 INTERVAL = 60          # 초 (재고 대기 재시도 간격)
 BACKOFF_429 = 120      # 429 발생 라운드는 더 쉼
 MAX_MINUTES = 340      # 이 시간 넘으면 종료(다음 예약 실행이 이어받음; Actions 6h 한도 회피)
-DISPLAY = "claude-bridge"
+DISPLAY = "claude_bridge"
 OCPUS = 1
 MEM_GB = 6
 SHAPE = "VM.Standard.A1.Flex"

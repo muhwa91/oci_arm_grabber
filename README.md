@@ -1,4 +1,4 @@
-# oci-arm-grabber
+# oci_arm_grabber
 
 Grabs a free Oracle Cloud **Ampere A1.Flex** ARM instance the moment capacity
 appears — runs 24/7 on GitHub Actions so no local machine needs to stay on.
