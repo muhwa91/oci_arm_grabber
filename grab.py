@@ -12,6 +12,7 @@ import sys
 import tempfile
 import time
 import urllib.request
+from datetime import datetime, timezone
 
 import oci
 
@@ -54,6 +55,44 @@ def notify(msg):
         urllib.request.urlopen(req, timeout=15)
     except Exception as e:  # noqa: BLE001
         print(f"discord notify failed (ignored): {type(e).__name__}: {e}")
+
+
+def cumulative_minutes():
+    """브리지 `오라클` 명령과 동일 집계 — 이 워크플로우 전체의 누적 경과분(≈ 누적 시도수).
+
+    GitHub API로 실행 목록 조회 → conclusion 이 cancelled 아닌 실행의 run_started_at
+    최솟값 = 캠페인 시작 → now - 시작 = 누적. 60초 재시도라 시도수 ≈ 경과분.
+    토큰/레포 없음·조회 실패는 None(호출부가 이번-실행 수치로 폴백).
+    """
+    repo = os.environ.get("GITHUB_REPOSITORY", "")
+    token = os.environ.get("GITHUB_TOKEN", "")
+    if not repo or not token:
+        return None
+    req = urllib.request.Request(
+        f"https://api.github.com/repos/{repo}/actions/runs?per_page=100",
+        headers={
+            "Authorization": f"Bearer {token}",
+            "User-Agent": "oci-arm-grabber (https://github.com/muhwa91)",
+            "Accept": "application/vnd.github+json",
+        },
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            runs = json.load(resp).get("workflow_runs", [])
+    except Exception as e:  # noqa: BLE001
+        print(f"cumulative fetch failed (fallback): {type(e).__name__}: {e}")
+        return None
+    starts = []
+    for r in runs:
+        if r.get("conclusion") == "cancelled":  # 테스트로 취소한 실행 제외(브리지와 동일)
+            continue
+        try:
+            starts.append(datetime.fromisoformat(r["run_started_at"]))  # 3.11+ 'Z' 파싱
+        except (KeyError, TypeError, ValueError):
+            pass
+    if not starts:
+        return None
+    return max(0, int((datetime.now(timezone.utc) - min(starts)).total_seconds())) // 60
 
 
 def build_clients():
@@ -145,11 +184,18 @@ def main():
         slot = int(time.time() // 1800)
         if slot != last_slot:
             last_slot = slot
-            mins = int((time.monotonic() - start) // 60)
-            notify(
-                f"⏳ 오라클 재고 대기 중 — 이번 실행 {attempt}회 시도 · "
-                f"{mins // 60}시간 {mins % 60}분째 (누적은 '오라클' 명령으로 확인)"
-            )
+            cum = cumulative_minutes()  # 브리지 `오라클`과 동일 누적 집계
+            if cum is not None:
+                notify(
+                    f"⏳ 오라클 재고 대기 중 — 누적 약 {cum}회 시도 · "
+                    f"{cum // 60}시간 {cum % 60}분째"
+                )
+            else:  # 조회 실패 폴백 — 이번 실행 수치라도 알림은 나간다
+                mins = int((time.monotonic() - start) // 60)
+                notify(
+                    f"⏳ 오라클 재고 대기 중 — 이번 실행 {attempt}회 시도 · "
+                    f"{mins // 60}시간 {mins % 60}분째 (누적은 '오라클' 명령으로 확인)"
+                )
         try:
             new = cc.launch_instance(details).data
             ip = public_ip_of(cc, net, compartment, new.id)
