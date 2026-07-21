@@ -1,0 +1,40 @@
+name: grab-arm
+
+# 컴퓨터를 꺼도 GitHub 러너가 24/7 대신 재고를 두드린다.
+# 한 실행이 ~5.7시간 60초 루프를 돌고, concurrency 큐로 다음 실행이 이어받아 끊김 없이 지속.
+# 공개 레포라 Actions 분 무제한(무료). 성공/오류 시에만 디스코드 알림.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 */2 * * *" # 2시간마다 예약(실행 중이면 큐 대기 → 끝나면 이어받음)
+
+concurrency:
+  group: grab-arm
+  cancel-in-progress: false # 실행 중이면 취소 말고 큐에 대기(연속 실행)
+
+jobs:
+  grab:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350 # Actions 6h 한도 내에서 안전하게 종료
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install --quiet oci
+      - name: grab ARM capacity
+        env:
+          OCI_TENANCY: ${{ secrets.OCI_TENANCY }}
+          OCI_USER: ${{ secrets.OCI_USER }}
+          OCI_FINGERPRINT: ${{ secrets.OCI_FINGERPRINT }}
+          OCI_REGION: ${{ secrets.OCI_REGION }}
+          OCI_KEY_PEM: ${{ secrets.OCI_KEY_PEM }}
+          OCI_COMPARTMENT: ${{ secrets.OCI_COMPARTMENT }}
+          OCI_AD: ${{ secrets.OCI_AD }}
+          OCI_IMAGE: ${{ secrets.OCI_IMAGE }}
+          OCI_SUBNET: ${{ secrets.OCI_SUBNET }}
+          SSH_PUBKEY: ${{ secrets.SSH_PUBKEY }}
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+          DISCORD_CHANNEL: ${{ secrets.DISCORD_CHANNEL }}
+          DISCORD_USER_ID: ${{ secrets.DISCORD_USER_ID }}
+        run: python grab.py
