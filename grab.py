@@ -186,8 +186,8 @@ def classify(e):
 
 
 def maybe_notify_progress(start, attempt, last_slot):
-    """벽시계 x:00 / x:30 정각에 대기 진행 알림 1회. 다음 slot 값을 반환."""
-    slot = int(time.time() // 1800)
+    """벽시계 매시 정각(x:00)에 대기 진행 알림 1회. 다음 slot 값을 반환."""
+    slot = int(time.time() // 3600)
     if slot == last_slot:
         return last_slot
     cum = cumulative_minutes()  # 브리지 `오라클`과 동일 누적 집계
@@ -221,7 +221,7 @@ def main():
     print(f"start grab loop — {SHAPE} {OCPUS}c/{MEM_GB}GB [{ad}], {INTERVAL}s")
     deadline = time.monotonic() + MAX_MINUTES * 60
     start = time.monotonic()
-    last_slot = int(time.time() // 1800)  # 벽시계 30분 버킷(x:00/x:30 정각 정렬); 시작 직후 발신 방지
+    last_slot = int(time.time() // 3600)  # 벽시계 60분 버킷(x:00 정각 정렬); 시작 직후 발신 방지
     attempt = 0
     while time.monotonic() < deadline:
         # 라운드마다 중복 재확인 — 부분성공(서버는 생성했으나 클라 타임아웃)·겹치는 예약 실행 차단
