@@ -38,4 +38,4 @@ jobs:
           DISCORD_CHANNEL: ${{ secrets.DISCORD_CHANNEL }}
           DISCORD_USER_ID: ${{ secrets.DISCORD_USER_ID }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} # 진행 알림 누적 집계용(actions:read)
-        run: python grab.py
+        run: python -u grab.py
