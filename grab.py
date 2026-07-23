@@ -19,7 +19,7 @@ from datetime import datetime, timezone
 
 import oci
 
-INTERVAL = 60          # 초 (라운드 사이 재시도 간격)
+INTERVAL = 45          # 초 (라운드 사이 재시도 간격 — 60→45 실험, 429 관찰 후 조정)
 BACKOFF_429 = 120      # 429 발생 라운드는 더 쉼
 MAX_MINUTES = 340      # 이 시간 넘으면 종료(다음 예약 실행이 이어받음; Actions 6h 한도 회피)
 DISPLAY = "claude_bridge"
