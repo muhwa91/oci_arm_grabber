@@ -20,7 +20,8 @@ from datetime import datetime, timezone
 
 import oci
 
-INTERVAL = 60          # 초 (재고 대기 재시도 간격)
+INTERVAL = 60          # 초 (라운드 사이 재시도 간격)
+PER_TARGET_GAP = 8     # 초 (같은 라운드 내 조합 간 간격 — 연속 타격발 429 완화; 짧게 둬 재고순간 놓침 최소화)
 BACKOFF_429 = 120      # 429 발생 라운드는 더 쉼
 MAX_MINUTES = 340      # 이 시간 넘으면 종료(다음 예약 실행이 이어받음; Actions 6h 한도 회피)
 DISPLAY = "claude_bridge"
@@ -287,9 +288,11 @@ def main():
         saw_non_skip = False  # 이 라운드에 skip 아닌 시도(retry/rate)가 하나라도 있었나
         did_attempt = False
         # 매 라운드: 모든 (AD, FD) 조합을 순차 시도 — 어느 AD든 순간 재고가 뜨면 잡는다
-        for ad, fd in targets:
+        for i, (ad, fd) in enumerate(targets):
             if time.monotonic() >= deadline:
                 break
+            if i > 0:  # 조합 사이 짧은 간격 — 연속 타격발 429 완화(첫 조합·라운드끝엔 없음, 이중대기 방지)
+                time.sleep(PER_TARGET_GAP)
             attempt += 1
             did_attempt = True
             details = build_details(compartment, ad, fd, image, subnet, pubkey)

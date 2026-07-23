@@ -306,6 +306,27 @@ def test_partial_success_recheck_prevents_dup():
     print("ok partial_success_recheck_prevents_dup")
 
 
+def test_per_target_gap_between_combos():
+    # 조합 2개 이상: 조합 사이 PER_TARGET_GAP 1회(첫 조합 앞·마지막 조합 뒤엔 없음)
+    targets = [("AD-1", "FD-1"), ("AD-1", "FD-2")]
+    cap = se(500, "InternalError", "Out of host capacity.")
+    compute, sleeps, notes = run_main(targets, [cap, "OK"])
+    assert compute.calls == [("AD-1", "FD-1"), ("AD-1", "FD-2")], compute.calls
+    assert sleeps == [grab.PER_TARGET_GAP], sleeps  # combo2 앞 gap만 (성공→라운드 INTERVAL 없음)
+    assert any("잡혔습니다" in n for n in notes)
+    print("ok per_target_gap_between_combos")
+
+
+def test_no_gap_single_target():
+    # 조합 1개: 조합간 gap 없음(라운드 사이 INTERVAL만) — 무의미하게 자지 않음
+    targets = [("AD-1", "FD-1")]
+    cap = se(500, "InternalError", "Out of host capacity.")
+    compute, sleeps, notes = run_main(targets, [cap, "OK"])
+    assert grab.PER_TARGET_GAP not in sleeps, sleeps
+    assert sleeps == [grab.INTERVAL], sleeps  # round1 뒤 INTERVAL 한 번, round2 성공
+    print("ok no_gap_single_target")
+
+
 def test_recheck_exception_does_not_kill_main():
     # 라운드별 existing 재확인(list_instances)이 일시 500을 던져도 main 크래시 없이
     # launch 순회를 계속해 성공까지 감. 실 existing_instance(best-effort 삼킴) 경로 사용.
@@ -347,6 +368,8 @@ if __name__ == "__main__":
     test_existing_skips_loop()
     test_5xx_retry_continues()
     test_partial_success_recheck_prevents_dup()
+    test_per_target_gap_between_combos()
+    test_no_gap_single_target()
     test_recheck_exception_does_not_kill_main()
     test_consecutive_skip_rounds_fatal()
     print("\nALL PASS")
