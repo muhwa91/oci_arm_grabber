@@ -37,10 +37,18 @@ def env(k, required=True):
 
 
 def notify(msg):
+    """디스코드 전송 → 성공 True / 실패·미설정 False.
+
+    실패해도 예외는 던지지 않는다(잡이 루프를 죽이면 안 된다). 다만 **결과를 돌려준다** —
+    감시 스크립트(check_tenancy.py)는 이 값을 보고 종료코드를 정한다. 조용한 401 이
+    "알림이 나갔다"로 둔갑하면 워크플로가 초록인데 아무도 못 받는 상태가 된다(2026-08-12 실사고).
+    """
     token = env("DISCORD_BOT_TOKEN", required=False)
     channel = env("DISCORD_CHANNEL", required=False)
     if not token or not channel:
-        return
+        # 문장부호는 ASCII 로 — cp949 콘솔(로컬 윈도우)에서 em dash 는 UnicodeEncodeError 다.
+        print("::error::discord 미설정 (DISCORD_BOT_TOKEN/DISCORD_CHANNEL 없음)")
+        return False
     uid = env("DISCORD_USER_ID", required=False)
     content = (f"<@{uid}> " if uid else "") + msg
     body = json.dumps({"content": content}).encode()
