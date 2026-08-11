@@ -1,0 +1,32 @@
+name: tenancy-watch
+
+# 구 테넌시(도쿄)가 삭제돼야 새 계정(싱가포르) 가입이 가능하다.
+# PC 가 꺼져 있어도 놓치지 않도록 GitHub 러너가 하루 1회 생존 여부를 확인한다.
+# 살아있으면 무음, 삭제 확인 시에만 디스코드 알림 → 알림 받으면 이 워크플로를 Disable.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 0 * * *" # UTC 00:00 = KST 09:00, 하루 1회
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install --quiet oci
+      - run: python -u check_tenancy.py --selftest # 판정 로직 검증(OCI 호출 없음)
+      - name: check tenancy alive
+        env:
+          OCI_TENANCY: ${{ secrets.OCI_TENANCY }}
+          OCI_USER: ${{ secrets.OCI_USER }}
+          OCI_FINGERPRINT: ${{ secrets.OCI_FINGERPRINT }}
+          OCI_REGION: ${{ secrets.OCI_REGION }}
+          OCI_KEY_PEM: ${{ secrets.OCI_KEY_PEM }}
+          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
+          DISCORD_CHANNEL: ${{ secrets.DISCORD_CHANNEL }}
+          DISCORD_USER_ID: ${{ secrets.DISCORD_USER_ID }} # 멘션
+        run: python -u check_tenancy.py
