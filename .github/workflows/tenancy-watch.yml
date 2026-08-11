@@ -29,4 +29,7 @@ jobs:
           DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
           DISCORD_CHANNEL: ${{ secrets.DISCORD_CHANNEL }}
           DISCORD_USER_ID: ${{ secrets.DISCORD_USER_ID }} # 멘션
+          # 텔레그램은 수신 전용 — 삭제 확인 시에만 발신(매일 오는 alive/보류는 디스코드만).
+          TELEGRAM_DEV_BOT_TOKEN: ${{ secrets.TELEGRAM_DEV_BOT_TOKEN }}
+          TELEGRAM_DEV_CHAT_ID: ${{ secrets.TELEGRAM_DEV_CHAT_ID }}
         run: python -u check_tenancy.py

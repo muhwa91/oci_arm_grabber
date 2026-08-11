@@ -8,11 +8,17 @@
 오탐(살아있는데 "삭제됐다"고 알림)이 최악이므로 삭제 판정은 RECHECK_SEC 뒤 재조회로 한 번 더 확인한다.
 세 경우 모두 매일 디스코드로 알린다 — 알림이 **안 오는 것 자체가** 감시가 죽었다는 신호다
 (시크릿 만료·워크플로 비활성화 등은 스크립트가 스스로 알릴 수 없다).
+텔레그램은 **삭제 확인일 때만** 보낸다(수신 전용 채널). 매일 오는 카운트다운·판정 보류까지
+텔레그램에 흘리면 그게 소음이 돼 정작 중요한 한 번을 놓친다 — 디스코드가 그 몫을 맡는다.
 설정은 grab.py 와 같은 환경변수(GitHub Secrets)로 주입 — 코드/로그에 비밀 미노출.
 """
 
+import json
+import os
+import re
 import sys
 import time
+import urllib.request
 from datetime import date, datetime, timedelta, timezone
 
 import oci
@@ -22,7 +28,7 @@ import oci
 from grab import build_clients, notify
 
 RECHECK_SEC = 30  # 삭제 판정 후 재확인 간격(일시 401 오탐 차단)
-KST = timezone(timedelta(hours=9))  # 러너는 UTC — 카운트다운은 운영자님 기준 날짜로
+KST = timezone(timedelta(hours=9))  # 러너는 UTC — 카운트다운은 운영자 기준 날짜(KST)로
 
 # 삭제 요청 +30일 추정치일 뿐, 실제 삭제는 이보다 이르거나 늦을 수 있다(오라클 재량).
 # 카운트다운은 참고용이고, 삭제 여부는 매일의 실제 조회 결과가 정한다.
@@ -42,6 +48,43 @@ NEXT_STEPS = (
     "⚠️ 확인하셨으면 Actions 탭에서 **tenancy-watch 워크플로를 Disable** 하세요 — "
     "재가입 전까지 매일 같은 알림이 옵니다."
 )
+
+
+_MD = re.compile(r"\*\*|`|^-#\s*", re.M)  # 디스코드 전용 마크업(굵게·코드·서브텍스트)
+
+
+def to_plain(text):
+    """디스코드 문구 → 텔레그램용 순수 텍스트.
+
+    텔레그램은 parse_mode 없이 보내므로(마크다운 파싱 실패로 전송이 통째로 거절되는 걸 피한다)
+    `**굵게**`·`` `코드` ``·`-# 서브텍스트`·`<링크>`(임베드 억제 표기)가 기호째 노출된다. 그것만 벗긴다.
+    """
+    return _MD.sub("", re.sub(r"<(https?://[^>\s]+)>", r"\1", text))
+
+
+def tg(msg):
+    """텔레그램 전송(수신 전용 봇). 실패는 삼키되 로그를 남긴다 — 조용한 실패는 감시가 없는 것과 같다.
+
+    디스코드 notify() 와 **독립**이다(한쪽이 죽어도 다른 쪽은 그대로 나간다).
+    """
+    token = os.environ.get("TELEGRAM_DEV_BOT_TOKEN", "")
+    chat = os.environ.get("TELEGRAM_DEV_CHAT_ID", "")
+    if not token or not chat:
+        print("telegram skipped: 미설정")
+        return False
+    req = urllib.request.Request(
+        f"https://api.telegram.org/bot{token}/sendMessage",
+        # UTF-8 명시 필수 — 로케일이 cp949 인 환경에서 'strings must be encoded in UTF-8' 로 거절된다.
+        data=json.dumps({"chat_id": chat, "text": to_plain(msg)}).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        urllib.request.urlopen(req, timeout=15)
+        return True
+    except Exception as e:  # noqa: BLE001
+        print(f"telegram notify failed: {type(e).__name__}: {e}")
+        return False
 
 
 def verdict(status, code):
@@ -87,6 +130,12 @@ def selftest():
     assert verdict(429, "TooManyRequests") == "unknown"
     assert verdict(500, "InternalError") == "unknown"
     assert verdict(503, "ServiceUnavailable") == "unknown"
+    # 텔레그램 평문화 — 실제 발송 문구(NEXT_STEPS)에 마크다운 기호가 남으면 그대로 노출된다.
+    plain = to_plain(NEXT_STEPS)
+    assert plain.startswith("🚨 구 오라클 테넌시가 삭제됐습니다"), plain
+    assert "**" not in plain and "`" not in plain, plain
+    assert "https://signup.oraclecloud.com" in plain, plain
+    assert to_plain("-# 각주\n**굵게** `코드` <https://a.b/c>") == "각주\n굵게 코드 https://a.b/c"
     print("selftest ok")
 
 
@@ -104,6 +153,7 @@ def main():
     print(f"tenancy {state} ({tag}) {why}")
     if state == "deleted":
         notify(NEXT_STEPS)
+        tg(NEXT_STEPS)  # 텔레그램은 이 한 번만 — 매일 오는 alive/보류는 디스코드 몫
     elif state == "alive":
         notify(f"🕒 테넌시 존재-예상 삭제 {ETA_STR}({tag})")
     else:  # 판정 보류 — 삭제로 오해하지 않게 문구를 분명히
