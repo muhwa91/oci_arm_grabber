@@ -195,6 +195,43 @@ def tg_selftest():
                 os.environ[k] = v
 
 
+def notify_selftest():
+    """notify() 가 **bool 을 실제로 돌려주는지** 본다.
+
+    2026-08-12 실사고: docstring 에 "성공 True / 실패 False" 라고 적어놓고 본문이 아무것도
+    return 하지 않아 늘 None(falsy)이었다. main() 이 그 값으로 종료코드를 정하므로 **전송에
+    성공해도 워크플로가 빨갛게 죽었다**. test_grab.py 는 notify 를 통째로 몽키패치해서 이걸
+    못 잡는다 — 반환값 계약은 여기서 고정한다.
+    """
+    saved = {k: os.environ.get(k) for k in ("DISCORD_BOT_TOKEN", "DISCORD_CHANNEL", "DISCORD_USER_ID")}
+    real_urlopen = urllib.request.urlopen
+    try:
+        os.environ["DISCORD_BOT_TOKEN"] = "tok"
+        os.environ["DISCORD_CHANNEL"] = "1"
+        os.environ.pop("DISCORD_USER_ID", None)
+
+        urllib.request.urlopen = lambda *_a, **_kw: io.BytesIO(b"{}")
+        assert notify("x") is True  # 성공 경로가 True 를 돌려준다
+
+        def boom(*_a, **_kw):
+            raise OSError("boom")
+
+        urllib.request.urlopen = boom
+        with contextlib.redirect_stdout(io.StringIO()):
+            assert notify("x") is False  # 실패는 삼키되 False 를 돌려준다
+
+        del os.environ["DISCORD_BOT_TOKEN"]
+        with contextlib.redirect_stdout(io.StringIO()):
+            assert notify("x") is False  # 미설정도 False
+    finally:
+        urllib.request.urlopen = real_urlopen
+        for k, v in saved.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+
+
 def selftest():
     assert dday(date(2026, 8, 11)) == "D-16"
     assert dday(DELETE_ETA) == "D-DAY"
@@ -216,6 +253,7 @@ def selftest():
     # `-#` 뒤가 개행뿐이어도 줄을 합치지 않는다(\s 를 쓰면 다음 줄이 끌려 올라온다).
     assert to_plain("-#\n다음 줄") == "\n다음 줄"
     tg_selftest()
+    notify_selftest()
     print("selftest ok")
 
 

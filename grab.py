@@ -64,8 +64,10 @@ def notify(msg):
     )
     try:
         urllib.request.urlopen(req, timeout=15)
+        return True
     except Exception as e:  # noqa: BLE001
         print(f"discord notify failed (ignored): {type(e).__name__}: {e}")
+        return False
 
 
 def cumulative_minutes():
