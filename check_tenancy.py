@@ -27,6 +27,7 @@ KST = timezone(timedelta(hours=9))  # 러너는 UTC — 카운트다운은 운�
 # 삭제 요청 +30일 추정치일 뿐, 실제 삭제는 이보다 이르거나 늦을 수 있다(오라클 재량).
 # 카운트다운은 참고용이고, 삭제 여부는 매일의 실제 조회 결과가 정한다.
 DELETE_ETA = date(2026, 8, 27)
+ETA_STR = DELETE_ETA.strftime("%y-%m-%d")  # 폰 알림 미리보기에서 잘리지 않게 2자리 연도
 
 # 테넌시가 사라지면 서명 검증 자체가 실패해 401 NotAuthenticated, 리소스 조회는 404 로 온다.
 DELETED_CODES = {"NotAuthenticated", "NotAuthorizedOrNotFound", "TenantNotFound"}
@@ -104,11 +105,11 @@ def main():
     if state == "deleted":
         notify(NEXT_STEPS)
     elif state == "alive":
-        notify(f"🕒 구 테넌시 아직 살아있음 · 예상 삭제 {DELETE_ETA} ({tag})")
+        notify(f"🕒 테넌시 존재-예상 삭제 {ETA_STR}({tag})")
     else:  # 판정 보류 — 삭제로 오해하지 않게 문구를 분명히
         notify(
             f"⚠️ 구 테넌시 상태 확인 실패 — **판정 보류**(삭제된 것 아님) · "
-            f"`{why}` · 예상 삭제 {DELETE_ETA} ({tag})"
+            f"`{why}` · 예상 삭제 {ETA_STR}({tag})"
         )
 
 
