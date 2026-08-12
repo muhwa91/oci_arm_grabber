@@ -46,16 +46,33 @@ ETA_STR = DELETE_ETA.strftime("%y-%m-%d")  # 폰 알림 미리보기에서 잘�
 # 매일 오는 알림이 "판정 보류"로 바뀌므로 며칠 이어지면 눈에 띈다.
 DELETED_CODES = {"NotAuthorizedOrNotFound", "TenantNotFound"}
 
-NEXT_STEPS = (
-    "🚨 **구 오라클 테넌시가 삭제됐습니다** (도쿄) — 이제 새 계정 가입이 가능합니다.\n"
-    "1. https://signup.oraclecloud.com — 홈 리전 **ap-singapore-1 (싱가포르)** 선택\n"
-    "2. 가입 후 **PAYG 업그레이드**(Always Free 한도는 그대로)\n"
-    "3. 사용자 API 키 발급 → 이 레포 Secrets 갱신"
-    "(OCI_TENANCY·OCI_USER·OCI_FINGERPRINT·OCI_REGION·OCI_KEY_PEM·"
-    "OCI_COMPARTMENT·OCI_AD·OCI_IMAGE·OCI_SUBNET)\n"
-    "⚠️ 확인하셨으면 Actions 탭에서 **tenancy-watch 워크플로를 Disable** 하세요 — "
-    "재가입 전까지 매일 같은 알림이 옵니다."
-)
+PROJECT = "💼 oci_arm_grabber"  # 💼 는 폰으로 오는 알림 3종(발송이상·테넌시·PC활성화) 공통 표식
+
+
+# 재가입 절차 — 알림 본문에서 뺐으므로 여기가 유일한 기록이다(2026-08-12).
+#   1. https://signup.oraclecloud.com — 홈 리전 ap-singapore-1(싱가포르) 선택
+#   2. 가입 후 PAYG 업그레이드(Always Free 한도는 그대로)
+#   3. 사용자 API 키 발급 → 이 레포 Secrets 갱신
+#      (OCI_TENANCY·OCI_USER·OCI_FINGERPRINT·OCI_REGION·OCI_KEY_PEM·
+#       OCI_COMPARTMENT·OCI_AD·OCI_IMAGE·OCI_SUBNET)
+#   4. Actions 탭에서 tenancy-watch 를 Disable — 안 하면 매일 같은 알림이 온다
+
+
+def kdate(d):
+    """머리글 날짜 `26년 8월 27일`. strftime 의 `%-m`(리눅스 전용)을 피해 직접 조립한다."""
+    return f"{d.year % 100}년 {d.month}월 {d.day}일"
+
+
+def next_steps(today):
+    """삭제 확인 알림 — 폰에서 네 줄로 끝난다.
+
+    상세 절차를 싣지 않는 것은 의도다: 이 메시지를 Claude 에게 그대로 던지면 워크플로
+    Disable·Secrets 갱신까지 처리하는 규약이라(2026-08-12 운영자 지시), 본문에 있어야 할
+    것은 "무엇이 일어났고 다음이 무엇인가" 뿐이다. 절차는 위 주석이 보관한다.
+    """
+    return "\n".join(
+        [f"[{kdate(today)}]", PROJECT, "🚨 오라클 테넌시 삭제완료", "- 새 계정 가입 필요"]
+    )
 
 
 # `\s` 를 쓰면 개행까지 먹어 '-#\n다음 줄' 이 한 줄로 합쳐진다 → 같은 줄의 공백만([ \t]).
@@ -244,11 +261,14 @@ def selftest():
     assert verdict(429, "TooManyRequests") == "unknown"
     assert verdict(500, "InternalError") == "unknown"
     assert verdict(503, "ServiceUnavailable") == "unknown"
-    # 텔레그램 평문화 — 실제 발송 문구(NEXT_STEPS)에 마크다운 기호가 남으면 그대로 노출된다.
-    plain = to_plain(NEXT_STEPS)
-    assert plain.startswith("🚨 구 오라클 테넌시가 삭제됐습니다"), plain
+    # 텔레그램 평문화 — 실제 발송 문구에 마크다운 기호가 남으면 그대로 노출된다.
+    # 본문 전체를 통째로 고정한다: 이 4줄이 운영자가 확정한 형식이고, 한 줄이라도 늘면
+    # "던지면 Claude 가 처리한다"는 전제가 흐려진다(절차는 파일 위 주석이 보관).
+    plain = to_plain(next_steps(date(2026, 8, 27)))
+    assert plain == (
+        "[26년 8월 27일]\n💼 oci_arm_grabber\n🚨 오라클 테넌시 삭제완료\n- 새 계정 가입 필요"
+    ), plain
     assert "**" not in plain and "`" not in plain, plain
-    assert "https://signup.oraclecloud.com" in plain, plain
     assert to_plain("-# 각주\n**굵게** `코드` <https://a.b/c>") == "각주\n굵게 코드 https://a.b/c"
     # `-#` 뒤가 개행뿐이어도 줄을 합치지 않는다(\s 를 쓰면 다음 줄이 끌려 올라온다).
     assert to_plain("-#\n다음 줄") == "\n다음 줄"
@@ -267,13 +287,15 @@ def main():
         print(f"deleted? rechecking in {RECHECK_SEC}s")
         time.sleep(RECHECK_SEC)
         state, why = probe(cfg)
-    tag = dday(datetime.now(KST).date())
+    today = datetime.now(KST).date()
+    tag = dday(today)
     print(f"tenancy {state} ({tag}) {why}")
     if state == "deleted":
         # 이 한 번이 감시의 유일한 목적지다 — 두 채널 다 종료코드에 반영한다.
         # 둘을 각각 호출한 뒤에 합친다(`and` 로 묶으면 단축평가에 두 번째 전송이 건너뛰어진다).
-        sent_discord = notify(NEXT_STEPS)
-        sent_tg = tg(NEXT_STEPS)  # 텔레그램은 이 한 번만 — 매일 오는 alive/보류는 디스코드 몫
+        msg = next_steps(today)
+        sent_discord = notify(msg)
+        sent_tg = tg(msg)  # 텔레그램은 이 한 번만 — 매일 오는 alive/보류는 디스코드 몫
         sent = sent_discord and sent_tg
     elif state == "alive":
         sent = notify(f"🕒 테넌시 존재-예상 삭제 {ETA_STR}({tag})")
