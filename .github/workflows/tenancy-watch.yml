@@ -26,10 +26,8 @@ jobs:
           OCI_FINGERPRINT: ${{ secrets.OCI_FINGERPRINT }}
           OCI_REGION: ${{ secrets.OCI_REGION }}
           OCI_KEY_PEM: ${{ secrets.OCI_KEY_PEM }}
-          DISCORD_BOT_TOKEN: ${{ secrets.DISCORD_BOT_TOKEN }}
-          DISCORD_CHANNEL: ${{ secrets.DISCORD_CHANNEL }}
-          DISCORD_USER_ID: ${{ secrets.DISCORD_USER_ID }} # 멘션
-          # 텔레그램은 수신 전용 — 삭제 확인 시에만 발신(매일 오는 alive/보류는 디스코드만).
+          # 발신은 **텔레그램 감시 봇 하나**다(2026-08-16 운영자 지시로 디스코드 제거).
+          # deleted·alive·보류 세 상태가 전부 이리로 온다 — DISCORD_* 를 다시 넣지 마라.
           TELEGRAM_DEV_BOT_TOKEN: ${{ secrets.TELEGRAM_DEV_BOT_TOKEN }}
           TELEGRAM_DEV_CHAT_ID: ${{ secrets.TELEGRAM_DEV_CHAT_ID }}
         run: python -u check_tenancy.py
