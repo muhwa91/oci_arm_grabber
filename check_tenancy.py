@@ -31,8 +31,15 @@ import oci
 # OCI config 구성·디스코드 전송을 레포 내 한 곳으로 유지(두 벌이 되면 한쪽만 낡는다).
 # ⚠️ notify()(디스코드)는 이 파일에서 **더 이상 발송에 쓰지 않는다** — 2026-08-16 운영자 지시로
 # 오라클 알림은 **텔레그램 감시 봇 전용**이 됐다(세 상태 전부 tg()).
-# 그래도 import 는 남긴다: notify_selftest() 가 grab.yml 이 쓰는 notify() 의 **반환값 계약을
-# 고정하는 유일본**이고, test_grab.py 는 notify 를 몽키패치해서 그걸 못 잡는다. 지우지 마라.
+# 그래도 import 는 남긴다 — 다만 **이유를 정확히 적는다(2026-08-16 점검 정정)**:
+#   `grab.py` 의 notify() 호출 6곳은 **전부 반환값을 버린다.** 반환값 계약의 유일한 소비자는
+#   방금 지운 이 파일의 main() 이었다 → **지금 그 계약을 쓰는 코드는 없다.**
+#   notify_selftest() 는 «현재 소비자»를 지키는 게 아니라, 2026-08-12 회귀(docstring 은
+#   True/False 인데 본문이 None 을 돌려줘 전송 성공에도 워크플로가 죽었다)의 **재발 방어**로만 남긴다.
+#   test_grab.py 는 notify 를 몽키패치해서 그걸 못 잡는다. 지우지 마라.
+# ⚠️ 이 단언이 자동 실행되는 유일 경로는 tenancy-watch.yml 의 --selftest 스텝인데,
+#   삭제 감지 시 절차 4번이 **그 워크플로 Disable** 이다 → 그날로 방어가 멈춘다.
+#   재가입 때 grab.yml 에 셀프테스트 스텝을 넣거나 test_grab.py 로 이관할 것.
 from grab import build_clients, notify
 
 RECHECK_SEC = 30  # 삭제 판정 후 재확인 간격(일시적 404 오탐 차단)
@@ -61,7 +68,13 @@ PROJECT = "💼 oci_arm_grabber"  # 💼 는 폰으로 오는 알림 3종(발송
 #   3. 사용자 API 키 발급 → 이 레포 Secrets 갱신
 #      (OCI_TENANCY·OCI_USER·OCI_FINGERPRINT·OCI_REGION·OCI_KEY_PEM·
 #       OCI_COMPARTMENT·OCI_AD·OCI_IMAGE·OCI_SUBNET)
+#      🔴 PEM 은 **반드시 파일 리다이렉트**로 넣는다 — 인라인 금지(셸 히스토리·세션 로그에
+#         개인키 전문이 평문으로 남고, 그 키는 테넌시 전체 API 권한이다):
+#             gh secret set OCI_KEY_PEM --repo muhwa91/oci_arm_grabber < ~/oci_api_key.pem
+#         등록 후 로컬 키 파일은 즉시 삭제한다.
 #   4. Actions 탭에서 tenancy-watch 를 Disable — 안 하면 매일 같은 알림이 온다
+#      ⚠️ Disable 하면 위 notify_selftest() 단언과 **감시 봇 생존 신호(🕒)가 함께 멈춘다.**
+#         그 전에 grab.yml 로 셀프테스트를 옮기고, 생존 확인은 etf-info 의 getMe 스텝이 잇는다.
 
 
 def kdate(d):
@@ -78,6 +91,26 @@ def next_steps(today):
     """
     return "\n".join(
         [f"[{kdate(today)}]", PROJECT, "🚨 오라클 계정 삭제완료", "- 새 계정 가입 필요"]
+    )
+
+
+def status_msg(state, why, today, tag):
+    """상태 → 폰으로 나갈 문구. 순수(부작용 없음) — selftest 가 전문을 고정한다.
+
+    ⚠️ **main() 안에 인라인으로 되돌리지 마라(2026-08-16 점검 지적).** 종전엔 alive·보류 문구가
+    main() 안에 있어 selftest 가 한 줄도 검증하지 못했고, 그래서 «한 줄로 붙이지 마라» 같은
+    형식 규칙이 주석의 부탁으로만 남았다. 여기 있으면 단언이 집행한다.
+    마크다운 기호는 tg() 안의 to_plain() 이 벗긴다 — 문구에 남겨도 폰에는 평문으로 간다.
+    """
+    if state == "deleted":
+        return next_steps(today)
+    if state == "alive":
+        # 문구·줄바꿈은 2026-08-16 운영자가 폰에서 받아 보고 확정한 형태다. 한 줄로 붙이지 마라.
+        return f"🕒 오라클 계정 존재\n\n예상 삭제 {ETA_STR}({tag})"
+    # 판정 보류 — 삭제로 오해하지 않게 문구를 분명히
+    return (
+        f"⚠️ 오라클 계정 상태 확인 실패 — **판정 보류**(삭제된 것 아님, "
+        f"자격증명 문제일 수 있음) · `{why}` · 예상 삭제 {ETA_STR}({tag})"
     )
 
 
@@ -111,7 +144,8 @@ def mask(text, secret):
 def tg(msg):
     """텔레그램 전송(수신 전용 봇). 실패는 삼키되 로그를 남긴다 — 조용한 실패는 감시가 없는 것과 같다.
 
-    디스코드 notify() 와 **독립**이다(한쪽이 죽어도 다른 쪽은 그대로 나간다).
+    2026-08-16 부터 **유일한 발신 경로**다(디스코드 notify() 제거). 실패하면 알림이 통째로
+    사라지므로 main() 이 종료코드 1 로 러너를 붉게 만든다.
     """
     token = os.environ.get("TELEGRAM_DEV_BOT_TOKEN", "")
     chat = os.environ.get("TELEGRAM_DEV_CHAT_ID", "")
@@ -278,6 +312,15 @@ def selftest():
     assert to_plain("-# 각주\n**굵게** `코드` <https://a.b/c>") == "각주\n굵게 코드 https://a.b/c"
     # `-#` 뒤가 개행뿐이어도 줄을 합치지 않는다(\s 를 쓰면 다음 줄이 끌려 올라온다).
     assert to_plain("-#\n다음 줄") == "\n다음 줄"
+    # 발신 문구 3종을 전문으로 고정한다 — 운영자가 폰에서 확정한 형태이므로 형식이 곧 계약이다.
+    _d = date(2026, 8, 16)
+    alive = status_msg("alive", "", _d, "D-11")
+    assert alive == "🕒 오라클 계정 존재\n\n예상 삭제 26-08-27(D-11)", alive
+    assert "\n\n" in alive, "제목·상세는 두 문단이다 — 한 줄로 붙이지 마라"
+    hold = to_plain(status_msg("unknown", "ServiceError 401 NotAuthenticated", _d, "D-11"))
+    assert hold.startswith("⚠️ 오라클 계정 상태 확인 실패"), hold
+    assert "삭제된 것 아님" in hold and "**" not in hold, hold
+    assert status_msg("deleted", "", _d, "D-11") == next_steps(_d)
     tg_selftest()
     notify_selftest()
     print("selftest ok")
@@ -298,18 +341,7 @@ def main():
     print(f"tenancy {state} ({tag}) {why}")
     # 발신은 **텔레그램 감시 봇 하나**다(2026-08-16 운영자 지시 — 디스코드 발송 제거).
     # 세 상태가 같은 경로를 타므로 종료코드 판정도 한 군데로 모인다(`and` 합성이 사라졌다).
-    # 마크다운 기호는 tg() 안의 to_plain() 이 벗긴다 — 문구에 남겨도 폰에는 평문으로 간다.
-    if state == "deleted":
-        msg = next_steps(today)
-    elif state == "alive":
-        # 문구·줄바꿈은 2026-08-16 운영자가 폰에서 받아 보고 확정한 형태다. 한 줄로 붙이지 마라.
-        msg = f"🕒 오라클 계정 존재\n\n예상 삭제 {ETA_STR}({tag})"
-    else:  # 판정 보류 — 삭제로 오해하지 않게 문구를 분명히
-        msg = (
-            f"⚠️ 오라클 계정 상태 확인 실패 — **판정 보류**(삭제된 것 아님, "
-            f"자격증명 문제일 수 있음) · `{why}` · 예상 삭제 {ETA_STR}({tag})"
-        )
-    sent = tg(msg)
+    sent = tg(status_msg(state, why, today, tag))
     if not sent:
         # 전송 실패를 삼키면 워크플로는 초록인데 알림은 안 온다 = 감시가 없는 것과 같다.
         sys.exit(1)
