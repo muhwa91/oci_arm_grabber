@@ -39,9 +39,14 @@ def env(k, required=True):
 def notify(msg):
     """디스코드 전송 → 성공 True / 실패·미설정 False.
 
-    실패해도 예외는 던지지 않는다(잡이 루프를 죽이면 안 된다). 다만 **결과를 돌려준다** —
-    감시 스크립트(check_tenancy.py)는 이 값을 보고 종료코드를 정한다. 조용한 401 이
-    "알림이 나갔다"로 둔갑하면 워크플로가 초록인데 아무도 못 받는 상태가 된다(2026-08-12 실사고).
+    실패해도 예외는 던지지 않는다(잡이 루프를 죽이면 안 된다). 다만 **결과를 돌려준다.**
+
+    ⚠️ **지금 이 반환값을 쓰는 코드는 없다 (2026-08-16 정정).** 유일한 소비자였던
+    `check_tenancy.main()` 이 텔레그램 단독으로 바뀌며 사라졌고, 이 파일 안의 호출 6곳은
+    전부 값을 버린다. 그래도 bool 계약을 유지하는 이유는 **2026-08-12 실사고의 재발 방어**다 —
+    docstring 은 True/False 라 적어 놓고 본문이 None 을 돌려줘, 전송에 성공해도 워크플로가
+    빨갛게 죽었다. 단언은 `check_tenancy.notify_selftest()` 에 있다(`test_grab.py` 는 notify 를
+    몽키패치해서 못 잡는다). **«소비자가 없으니 필요 없다»로 읽고 걷지 마라.**
     """
     token = env("DISCORD_BOT_TOKEN", required=False)
     channel = env("DISCORD_CHANNEL", required=False)
