@@ -299,7 +299,8 @@ def main():
     if state == "deleted":
         msg = next_steps(today)
     elif state == "alive":
-        msg = f"🕒 테넌시 존재-예상 삭제 {ETA_STR}({tag})"
+        # 문구·줄바꿈은 2026-08-16 운영자가 폰에서 받아 보고 확정한 형태다. 한 줄로 붙이지 마라.
+        msg = f"🕒 오라클 계정 존재\n\n예상 삭제 {ETA_STR}({tag})"
     else:  # 판정 보류 — 삭제로 오해하지 않게 문구를 분명히
         msg = (
             f"⚠️ 구 테넌시 상태 확인 실패 — **판정 보류**(삭제된 것 아님, "
