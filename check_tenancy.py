@@ -26,7 +26,10 @@ from datetime import date, datetime, timedelta, timezone
 import oci
 
 # OCI config 구성·디스코드 전송을 레포 내 한 곳으로 유지(두 벌이 되면 한쪽만 낡는다).
-# notify() 는 DISCORD_BOT_TOKEN·DISCORD_CHANNEL 로 보내고 DISCORD_USER_ID 멘션을 붙인다.
+# ⚠️ notify()(디스코드)는 이 파일에서 **더 이상 발송에 쓰지 않는다** — 2026-08-16 운영자 지시로
+# 오라클 알림은 **텔레그램 감시 봇 전용**이 됐다(세 상태 전부 tg()).
+# 그래도 import 는 남긴다: notify_selftest() 가 grab.yml 이 쓰는 notify() 의 **반환값 계약을
+# 고정하는 유일본**이고, test_grab.py 는 notify 를 몽키패치해서 그걸 못 잡는다. 지우지 마라.
 from grab import build_clients, notify
 
 RECHECK_SEC = 30  # 삭제 판정 후 재확인 간격(일시적 404 오탐 차단)
@@ -290,20 +293,19 @@ def main():
     today = datetime.now(KST).date()
     tag = dday(today)
     print(f"tenancy {state} ({tag}) {why}")
+    # 발신은 **텔레그램 감시 봇 하나**다(2026-08-16 운영자 지시 — 디스코드 발송 제거).
+    # 세 상태가 같은 경로를 타므로 종료코드 판정도 한 군데로 모인다(`and` 합성이 사라졌다).
+    # 마크다운 기호는 tg() 안의 to_plain() 이 벗긴다 — 문구에 남겨도 폰에는 평문으로 간다.
     if state == "deleted":
-        # 이 한 번이 감시의 유일한 목적지다 — 두 채널 다 종료코드에 반영한다.
-        # 둘을 각각 호출한 뒤에 합친다(`and` 로 묶으면 단축평가에 두 번째 전송이 건너뛰어진다).
         msg = next_steps(today)
-        sent_discord = notify(msg)
-        sent_tg = tg(msg)  # 텔레그램은 이 한 번만 — 매일 오는 alive/보류는 디스코드 몫
-        sent = sent_discord and sent_tg
     elif state == "alive":
-        sent = notify(f"🕒 테넌시 존재-예상 삭제 {ETA_STR}({tag})")
+        msg = f"🕒 테넌시 존재-예상 삭제 {ETA_STR}({tag})"
     else:  # 판정 보류 — 삭제로 오해하지 않게 문구를 분명히
-        sent = notify(
+        msg = (
             f"⚠️ 구 테넌시 상태 확인 실패 — **판정 보류**(삭제된 것 아님, "
             f"자격증명 문제일 수 있음) · `{why}` · 예상 삭제 {ETA_STR}({tag})"
         )
+    sent = tg(msg)
     if not sent:
         # 전송 실패를 삼키면 워크플로는 초록인데 알림은 안 온다 = 감시가 없는 것과 같다.
         sys.exit(1)
